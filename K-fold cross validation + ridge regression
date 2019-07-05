@@ -1,0 +1,174 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[2]:
+
+
+import scipy.io as sio
+import sklearn
+import math
+import matplotlib.pyplot as plt
+import numpy as np
+dataset = sio.loadmat('dataset.mat')
+data_train_X = dataset['data_train_X']
+data_train_y = dataset['data_train_y'][0]
+data_test_X = dataset['data_test_X']
+data_test_y = dataset['data_test_y'][0]
+
+
+# In[9]:
+
+
+def shuffle_data(X, y):
+
+    idxs = np.random.permutation([i for i in range(len(X))])
+    shuffledx = []
+    shuffledy = []
+    for idx in idxs:
+        shuffledx.append(X[idx])
+        shuffledy.append(y[idx])
+    return shuffledx, shuffledy
+shuffle_data([1,2, 3, 4, 5], [10, 20, 30, 40, 50])
+
+
+# In[10]:
+
+
+def split_data(X, y, num_folds, fold):
+    n = len(X)
+    foldsize = math.floor(n / num_folds)
+    xfolds = []
+    yfolds = []
+    for i in range(num_folds):
+        if i < num_folds - 1:
+            splitidx = [(foldsize * i) + j for j in range(foldsize)]
+            xfolds.append(X[splitidx[0]:splitidx[-1] + 1])
+            yfolds.append(y[splitidx[0]:splitidx[-1] + 1])
+        else:
+            splitidx = [j for j in range(foldsize * i, n + 1)]
+            xfolds.append(X[splitidx[0]:splitidx[-1] + 1])
+            yfolds.append(y[splitidx[0]:splitidx[-1] + 1])
+    selx = xfolds.pop(fold - 1)
+    sely = yfolds.pop(fold - 1)
+    xrest = []
+    yrest = []
+    for fld in xfolds:
+        xrest.extend(fld)
+    for fl in yfolds:
+        yrest.extend(fl)
+        
+    return (selx, sely), (xrest, yrest)
+    
+split_data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110], 5, 1)
+
+
+# In[49]:
+
+
+def train_model(X, y, lambd):
+    a = np.matmul(np.transpose(X), X)
+    n = len(a)
+    I = np.identity(n)
+    I = np.multiply(I, lambd)
+
+    b = a + I
+    return np.dot(np.linalg.inv(b), np.matmul(np.transpose(X), y))
+
+    
+
+
+# In[7]:
+
+
+def predict(X, model):
+    return np.matmul(X, model)
+
+
+
+# In[11]:
+
+
+def loss(X, y, model):
+    total_loss = 0
+    pred = predict(X, model)
+    for i in range(len(X)):
+        total_loss += (y[i] - pred[i]) ** 2
+    return total_loss / len(X)
+
+model = train_model(data_train_X, data_train_y, .5)
+loss(data_test_X, data_test_y, model)
+    
+
+
+# In[16]:
+
+
+def cross_validation(X, y, num_folds, lambd_seq):
+    errors = []
+    xdata, ydata = shuffle_data(X, y)
+    for lam in lambd_seq:
+        cv_loss_lmd = 0
+        for i in range(1, num_folds + 1):
+            val_cv, train_cv = split_data(xdata, ydata, num_folds, i)
+            model = train_model(train_cv[0], train_cv[1], lam)
+            cv_loss_lmd += loss(val_cv[0], val_cv[1], model)
+        errors.append(cv_loss_lmd / num_folds)
+    return errors
+
+        
+    
+    
+
+
+# In[46]:
+
+
+# 2.3 b
+lambd_seq = np.linspace(0.02, 1.5, 50)
+
+
+train_error = []
+test_error = []
+for l in lambd_seq:
+    reg = train_model(data_train_X, data_train_y, l)
+    train_error.append(loss(data_train_X, data_train_y, reg))
+    test_error.append(loss(data_test_X, data_test_y, reg))
+print(train_error)
+print(test_error)
+
+
+
+# In[48]:
+
+
+cv5 = cross_validation(data_train_X, data_train_y, 5, lambd_seq)
+cv10 = cross_validation(data_train_X, data_train_y, 10, lambd_seq)
+fig = plt.figure()
+
+
+plt.plot(lambd_seq, cv5, label='5 fold cv')
+plt.plot(lambd_seq, cv10, label='10 fold cv')
+plt.plot(lambd_seq, train_error, label='training error')
+plt.plot(lambd_seq, test_error, label='test error')
+plt.title("Errors")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
+
+
+# In[47]:
+
+
+index_min5 = cv5.index(min(cv5))
+index_min10 = cv10.index(min(cv10))
+print(lambd_seq[index_min10])
+lambd_seq[index_min5]
+
+
+# Our cross validation procedure proposes approximately 0.5 as the value of lambda. Test error, 5 and 10 fold cross validation error curves decrease sharply from lambda = 0.02 to around lambda = 0.5 and then slowly increase, though test error increases slightly more sharply. Training error starts off close to 0 for lambda = 0.02 and then increases for increasing values of lambda 
+
+# In[ ]:
+
+
+
+
