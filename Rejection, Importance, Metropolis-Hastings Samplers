@@ -1,0 +1,136 @@
+import scipy.stats as scp
+from scipy.integrate import quad as integrate
+import numpy as np
+import matplotlib.pyplot as plt
+
+def prob(x):
+    norm = scp.norm(0, 4)
+    a = norm.pdf(x)
+    b = 1 - ((np.sin(5*x) ** 2) / (25 * np.sin(x) **2))
+    return a * b
+  
+def q1a():
+  xs = np.linspace(-20, 20, 10000)
+  total = 0
+  for x in xs:
+    total += prob(x)
+  total -= prob(-20) / 2
+  total -= prob(20) / 2
+  return total * 0.004
+
+
+print(q1a())
+
+"""$\int p(x, g = 1 | \theta = 0) \approx$ 0.799
+
+
+b)
+"""
+
+def q(x):
+    norm = scp.norm(0, 4)
+    return norm.pdf(x)
+def p(x):
+    norm = scp.norm(0, 4)
+    a = norm.pdf(x)
+    b = ((np.sin(5*x) ** 2) / (25 * np.sin(x) **2))
+    return a * b
+  
+
+for x in np.linspace(-20, 20, 12000): #make sure q(x) covers out target distribution
+  
+    if p(x) > q(x):
+        print('k')
+        
+def rejection(num_iter=10000):
+  accepted = []
+  ps = []
+  xs = np.linspace(-20, 20, 20000)
+  i = 0
+  while len(accepted) < 10000:
+      z = np.random.normal(0, 4)
+      
+      u = np.random.uniform(0, 1.1*q(z))
+      if u <= p(z):
+        accepted.append(z)
+      i += 1
+  print(10000/i)
+  plt.hist(accepted, bins=5000)
+  plt.show()
+rejection()
+
+# c
+
+def f(x):
+  b = (np.sin(5*x) ** 2) / (25 * np.sin(x) **2)
+  return 1 - b
+
+def q1c():
+  denom = 0
+  xs = []
+  for i in range(1000): 
+      xs.append( np.random.normal(0, 4)) # sampling from proposal distribution, q(x)
+    
+  for x in xs:
+    denom += p(x) / q(x)
+  denom /= 1000
+  
+  total = 0
+  for x in xs:
+    total += f(x) * (p(x) / q(x)) / denom
+  return total / 1000
+
+q1c()
+
+"""d)
+$p(x = 1.7, g = 1, \theta) = \mathcal{N}(1.7 | \mu = \theta, \sigma^2 = 4^2)\frac{\sin^2(5(1.7-\theta))}{25\sin^2(1.7 - \theta)}  \frac{1}{10 \pi (1 + ((\frac{\theta}{10})^2)}$
+"""
+
+def prob_theta(theta):
+  norm = scp.norm(theta, 4)
+  b = (np.sin(5*(1.7 - theta)) ** 2) / (25 * np.sin(1.7 - theta) **2)
+  c = 1 / (10 * np.pi * (1 + (theta/10) ** 2))
+  return norm.pdf(1.7) * b * c
+   
+def q1d():
+  thetas = np.linspace(-10, 13, 1000)
+  probs = []
+  for theta in thetas:
+    probs.append(prob_theta(theta))
+    
+  plt.plot(thetas, probs)
+  plt.show()
+  
+q1d()
+
+"""e)
+$p(\theta| x = 1.7, g=1)$ =
+$ p(\theta)p(x | \theta)p(g | x) =  \frac{1}{10 \pi (1 + ((\frac{\theta}{10})^2)}\mathcal{N}(1.7 | \mu = \theta, \sigma^2 = 4^2)\frac{\sin^2(5(1.7-\theta))}{25\sin^2(1.7 - \theta)}  $
+"""
+
+def q1e(num_iter):
+  x = 2
+  samples = []
+  for i in range(num_iter):
+      x_cand = np.random.normal(x, 4)
+      a = min(1, prob_theta(x_cand) / prob_theta(x))
+      u = np.random.uniform(0, 1)
+      if u < a:
+        x = x_cand 
+        samples.append(x)
+  plt.hist(samples, bins = 200)
+  plt.show()
+  return samples
+  
+
+
+MH_chain = q1e(2000)
+
+def q1f(samples):
+  count = 0
+  for x in samples:
+      if x < 3 and x > -3:
+        count += 1
+  return count / len(samples)
+
+q1f(MH_chain)
