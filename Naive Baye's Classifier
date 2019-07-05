@@ -1,0 +1,268 @@
+
+from __future__ import absolute_import
+from __future__ import print_function
+from future.standard_library import install_aliases
+install_aliases()
+
+import numpy as np
+import os
+import gzip
+import struct
+import array
+
+import matplotlib.pyplot as plt
+import matplotlib.image
+from urllib.request import urlretrieve
+
+def download(url, filename):
+    if not os.path.exists('data'):
+        os.makedirs('data')
+    out_file = os.path.join('data', filename)
+    if not os.path.isfile(out_file):
+        urlretrieve(url, out_file)
+
+def mnist():
+    base_url = 'http://yann.lecun.com/exdb/mnist/'
+
+    def parse_labels(filename):
+        with gzip.open(filename, 'rb') as fh:
+            magic, num_data = struct.unpack(">II", fh.read(8))
+            return np.array(array.array("B", fh.read()), dtype=np.uint8)
+
+    def parse_images(filename):
+        with gzip.open(filename, 'rb') as fh:
+            magic, num_data, rows, cols = struct.unpack(">IIII", fh.read(16))
+            return np.array(array.array("B", fh.read()), dtype=np.uint8).reshape(num_data, rows, cols)
+
+    for filename in ['train-images-idx3-ubyte.gz',
+                     'train-labels-idx1-ubyte.gz',
+                     't10k-images-idx3-ubyte.gz',
+                     't10k-labels-idx1-ubyte.gz']:
+        download(base_url + filename, filename)
+
+    train_images = parse_images('data/train-images-idx3-ubyte.gz')
+    train_labels = parse_labels('data/train-labels-idx1-ubyte.gz')
+    test_images  = parse_images('data/t10k-images-idx3-ubyte.gz')
+    test_labels  = parse_labels('data/t10k-labels-idx1-ubyte.gz')
+
+    return train_images, train_labels, test_images, test_labels
+
+
+def load_mnist():
+    partial_flatten = lambda x : np.reshape(x, (x.shape[0], np.prod(x.shape[1:])))
+    one_hot = lambda x, k: np.array(x[:,None] == np.arange(k)[None, :], dtype=int)
+    train_images, train_labels, test_images, test_labels = mnist()
+    train_images = partial_flatten(train_images) / 255.0
+    test_images  = partial_flatten(test_images)  / 255.0
+    train_labels = one_hot(train_labels, 10)
+    test_labels = one_hot(test_labels, 10)
+    N_data = train_images.shape[0]
+
+    return N_data, train_images, train_labels, test_images, test_labels
+
+
+def plot_images(images, ax, ims_per_row=5, padding=5, digit_dimensions=(28, 28),
+                cmap=matplotlib.cm.binary, vmin=None, vmax=None):
+    """Images should be a (N_images x pixels) matrix."""
+    N_images = images.shape[0]
+    N_rows = np.int32(np.ceil(float(N_images) / ims_per_row))
+    pad_value = np.min(images.ravel())
+    concat_images = np.full(((digit_dimensions[0] + padding) * N_rows + padding,
+                             (digit_dimensions[1] + padding) * ims_per_row + padding), pad_value)
+    for i in range(N_images):
+        cur_image = np.reshape(images[i, :], digit_dimensions)
+        row_ix = i // ims_per_row
+        col_ix = i % ims_per_row
+        row_start = padding + (padding + digit_dimensions[0]) * row_ix
+        col_start = padding + (padding + digit_dimensions[1]) * col_ix
+        concat_images[row_start: row_start + digit_dimensions[0],
+                      col_start: col_start + digit_dimensions[1]] = cur_image
+    cax = ax.matshow(concat_images, cmap=cmap, vmin=vmin, vmax=vmax)
+    plt.xticks(np.array([]))
+    plt.yticks(np.array([]))
+    return cax
+
+def save_images(images, filename, **kwargs):
+    fig = plt.figure(1)
+    fig.clf()
+    ax = fig.add_subplot(111)
+    plot_images(images, ax, **kwargs)
+    fig.patch.set_visible(False)
+    ax.patch.set_visible(False)
+    plt.savefig(filename)
+
+
+N_data, train_images, train_labels, test_images, test_labels = load_mnist()
+
+def fit_theta(train_im, train_lab):
+    theta = np.zeros((10, 784))
+    ones = np.ones((10, 784))
+
+    class_count = np.zeros(10)
+
+    for i in range(10000):
+        c = np.where(train_lab[i] == 1)
+        class_count = np.add(class_count, train_labels[i])
+        for j in range(784):
+            if train_images[i][j] > 0.5:
+                theta[c, j] += 1
+    images = []
+    for p in range(10):
+        #images.append(np.divide(np.add(theta[p, : ], ones[:, p]), 2 + class_count[p]))
+        theta[p] = np.divide(np.add(theta[p, :], ones[p, :]), 2 + class_count[p])
+        #
+    save_images(np.array(images), 'trained_thetas_MAP')
+    return theta
+
+
+
+
+def log_lik(c, x, theta):
+    l = 0
+    k = 0
+
+    l = np.sum(np.multiply(x, np.log(theta[c, :])) + \
+               np.multiply((np.ones((1, 784)) - x), np.log(np.ones((1, 784)) - theta[c, :])))
+
+    k += 10 * np.log(1 / 10)
+    for i in range(10):
+        k += np.sum(np.multiply(x, np.log(theta[i, :])) + \
+                   np.multiply((np.ones((1, 784)) - x), np.log(np.ones((1, 784)) - theta[i, :])))
+
+    return np.log(0.1) + l - k
+
+
+def avg_lik(ims, labels, theta):
+    total = 0
+    for i in range(10000):
+        total += log_lik(list(labels[i]).index(1), ims[i], theta)
+    return total / 10000
+
+
+
+def get_accuracy(images, labels, theta):
+    accuracy = 0
+
+    for n in range(10000):
+
+        predictions = []
+        for c in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
+            predictions.append(log_lik(c, images[n], theta))
+        prediction = predictions.index(max(predictions))
+        label = np.where(labels[n] == 1)[0][0]
+
+        if label == prediction:
+            accuracy += 1
+    return accuracy / 10000
+
+def sample(theta):
+    images = []
+
+    for i in range(10):
+        c = np.random.randint(0, 9)
+        thetac = theta[c]
+        image = []
+        for p in thetac:
+            if p >= np.mean(thetac):
+                image.append(1)
+            else:
+                image.append(0)
+        images.append(image)
+
+    save_images(np.array(images), 'sample_marginal')
+
+
+
+def p_bottom_pixel(b, theta, top, pi=0.1):
+    probability = 0
+
+    for c in range(10):
+        numerator = pi
+        for t in range(len(top)):
+            x_t = 0
+            if top[t] > 0.5:
+                x_t = 1
+
+            theta_ct = theta[c][t]
+            numerator = (theta_ct * x_t) * (1 - theta_ct) ** (1 - x_t)
+
+        denomenator = 0
+        for c1 in range(10):
+            tmp = pi
+
+            for t in range(len(top)):
+                x_t = 0
+                if top[t] > 0.5:
+                    x_t = 1
+
+                theta_c1t = theta[c1][t]
+                tmp = (theta_c1t * x_t) * (1 - theta_c1t) ** (1 - x_t)
+            denomenator += tmp
+        probability += theta[c][len(top) + b] * numerator / denomenator
+    return probability
+
+
+
+def predict_b(b, top, theta, pi=0.1):
+    prob = 0
+    for c in range(10):
+        numerator = theta[c][len(top) + b]
+        numerator *= np.product(np.power(theta[c][:392], top) * (np.power(np.ones(theta[c][:392].shape) - theta[c][:392], np.ones(top[:392].shape) - top)))
+        denom = 0.1 * np.product(np.power(theta[c][:392], top) * (np.power(np.ones(theta[c][:392].shape) - theta[c][:392], np.ones(top[:392].shape) - top)))
+        prob += numerator / denom
+
+    return prob
+
+
+
+
+def predict_bottom(train_image, theta):
+    top = list(train_image[0:int(len(train_image) / 2)])
+    bottom = list(train_image[int(len(train_image) / 2):])
+
+    for b in range(len(bottom)):
+        bottom[b] = predict_b(b, np.array(top), theta)
+    top.extend(bottom)
+
+    return np.array(top)
+
+
+def generate_bot(train_image_index, theta):
+    final_images = []
+    for i in train_image_index:
+        train_image = train_images[i]
+        final_images.append(predict_bottom(train_image, theta))
+    save_images(np.array(final_images), 'bottom generated')
+
+def snake(ims, labels, theta):
+
+    images = []
+    inds = np.random.randint(0, len(ims), 20)
+
+    for ind in inds:
+        img = ims[ind]
+        label = np.where(labels[ind] == 1)[0][0]
+        img[len(img) // 2: ] = theta[label][len(img) // 2:]
+        images.append(img)
+
+    save_images(np.array(images), 'bottom')
+
+
+
+
+if __name__ == '__main__':
+    theta = fit_theta(train_images, train_labels)
+    inds = np.random.randint(0, len(train_images), 20)
+    generate_bot(inds, theta)
+    sample(theta)
+
+
+    print(get_avg_log(len(test_images), test_images, test_labels, theta))
+    print(get_avg_log(len(train_images), train_images, train_labels, theta))
+    print(get_accuracy(train_images, train_labels, theta))
+    print(get_accuracy(test_images, test_labels, theta))
+    #save_images(images, 'theta_map_ims')
+
+
+
+
