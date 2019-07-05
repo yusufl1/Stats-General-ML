@@ -1,0 +1,96 @@
+import numpy as np
+import math
+from matplotlib import pyplot as plt
+N = 400
+D = 2
+K = 2
+mu1, mu2 = np.array([0.1, 0.1]), np.array([6.0, 0.1])
+sigma = np.matrix([[10, 7], [7, 10]])
+
+def generate_data():
+    sample1 = np.random.multivariate_normal(mu1, sigma, size=200)
+    sample2 = np.random.multivariate_normal(mu2, sigma, size=200)
+    data = np.concatenate((sample1, sample2))
+
+    plt.scatter(sample1[:, 0], sample1[:, 1], c="red")
+    plt.scatter(sample2[:, 0], sample2[:, 1], c="blue")
+    plt.show()
+    return data, sample1, sample2
+
+data, sample1, sample2 = generate_data()
+
+def cost(X, centers):
+    return np.sum((X - centers[:, np.newaxis]) ** 2, axis=2) ** 0.5
+
+def km_e_step(costs):
+    return np.argmin(costs, axis=0)
+
+def km_m_step(closest_clusters, X, k):
+    return np.array([np.mean(X[closest_clusters == c], axis=0) for c in range(k)])
+
+def k_means(X, k):
+    #initialize
+    i = 0
+    iters = []
+    centers = np.array([[0.0, 0.0], [1.0, 1.0]])
+    while i < 100000:
+        costs = cost(X, centers)
+        iters.append([i, np.mean(costs)])
+        closest_clusters = km_e_step(costs)
+        new_centers = km_m_step(closest_clusters, X, k)
+        if np.all(centers - new_centers < 1e-5):
+            break
+        centers = new_centers
+
+        i += 1
+    return centers, iters
+
+
+centers, iters = k_means(data, 2)
+
+
+def calculateDistance(x1, y1, x2, y2):
+    dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    return dist
+
+def assign_to_clusers(centers, X):
+    x1, y1 = centers[0, 0], centers[0, 1]
+    x2, y2 = centers[1, 0], centers[1, 1]
+    cluster1 = []
+    cluster2 = []
+    for i in range(X.shape[0]):
+        x, y = X[i, 0], X[i, 1]
+        distance1 = calculateDistance(x1, y1, x, y)
+        distance2 = calculateDistance(x2, y2, x, y)
+        if distance1 > distance2:
+            cluster2.append([x, y])
+        else:
+            cluster1.append([x, y])
+    return np.array(cluster1), np.array(cluster2)
+
+c1, c2 = assign_to_clusers(centers, data)
+
+#plt.scatter(c1[:, 0], c1[:, 1], c="red", marker='x')
+#plt.scatter(c2[:, 0], c2[:, 1], c="blue")
+#plt.plot(centers[:,0], centers[:,1], 'go')
+
+costss = []
+
+iters = np.array(iters)
+plt.plot(iters[:, 0], iters[:, 1])
+plt.show()
+
+def check_acc(cluster1_pred, cluster2_pred, cluster1, cluster2, X):
+    count = 0
+    for i in range(X.shape[0]):
+        x_p, y_p = X[i, 0], X[i, 1]
+        if ([x_p, y_p] in cluster1.tolist() and [x_p, y_p] in cluster1_pred.tolist()) or \
+            ([x_p, y_p] in cluster2.tolist() and [x_p, y_p] in cluster2_pred.tolist()):
+            count += 1
+    return count/X.shape[0]
+
+print(check_acc(c1, c2, sample1, sample2, data))
+
+
+
+
